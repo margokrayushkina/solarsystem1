@@ -15,7 +15,7 @@ export default function App() {
   // Responsive canvas
   useEffect(() => {
     const updateSize = () => {
-      const size = Math.min(window.innerWidth - 40, window.innerHeight - 200, 900);
+      const size = Math.max(300, Math.min(window.innerWidth - 40, window.innerHeight - 200, 900));
       setCanvasSize({ width: size, height: size });
     };
     updateSize();
@@ -38,6 +38,9 @@ export default function App() {
     const scale = getScaleFactor();
     const cx = canvasSize.width / 2;
     const cy = canvasSize.height / 2;
+
+    // Safety check: skip drawing if scale is invalid
+    if (scale <= 0 || canvasSize.width <= 0 || canvasSize.height <= 0) return;
 
     // Clear canvas with space background
     ctx.fillStyle = '#0a0a1a';
@@ -63,26 +66,35 @@ export default function App() {
 
     // Draw Sun with pulsating effect
     const pulse = 1 + 0.05 * Math.sin(timeRef.current * 0.003);
-    const sunRadius = 30 * scale * pulse;
+    const sunRadius = Math.max(1, 30 * scale * pulse);
+    const glowRadius = Math.max(sunRadius + 1, 70 * scale * pulse);
     
-    const sunGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, sunRadius);
-    sunGradient.addColorStop(0, '#fff7e0');
-    sunGradient.addColorStop(0.3, '#ffcc00');
-    sunGradient.addColorStop(0.7, '#ff8800');
-    sunGradient.addColorStop(1, '#ff440044');
-    ctx.beginPath();
-    ctx.arc(cx, cy, sunRadius, 0, Math.PI * 2);
-    ctx.fillStyle = sunGradient;
-    ctx.fill();
+    try {
+      const sunGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, sunRadius);
+      sunGradient.addColorStop(0, '#fff7e0');
+      sunGradient.addColorStop(0.3, '#ffcc00');
+      sunGradient.addColorStop(0.7, '#ff8800');
+      sunGradient.addColorStop(1, '#ff440044');
+      ctx.beginPath();
+      ctx.arc(cx, cy, sunRadius, 0, Math.PI * 2);
+      ctx.fillStyle = sunGradient;
+      ctx.fill();
 
-    // Sun glow
-    const glowGradient = ctx.createRadialGradient(cx, cy, sunRadius, cx, cy, 70 * scale * pulse);
-    glowGradient.addColorStop(0, 'rgba(255, 200, 50, 0.3)');
-    glowGradient.addColorStop(1, 'rgba(255, 200, 50, 0)');
-    ctx.beginPath();
-    ctx.arc(cx, cy, 70 * scale * pulse, 0, Math.PI * 2);
-    ctx.fillStyle = glowGradient;
-    ctx.fill();
+      // Sun glow
+      const glowGradient = ctx.createRadialGradient(cx, cy, sunRadius, cx, cy, glowRadius);
+      glowGradient.addColorStop(0, 'rgba(255, 200, 50, 0.3)');
+      glowGradient.addColorStop(1, 'rgba(255, 200, 50, 0)');
+      ctx.beginPath();
+      ctx.arc(cx, cy, glowRadius, 0, Math.PI * 2);
+      ctx.fillStyle = glowGradient;
+      ctx.fill();
+    } catch (e) {
+      // Fallback: draw sun as simple circle if gradient fails
+      ctx.beginPath();
+      ctx.arc(cx, cy, sunRadius, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffcc00';
+      ctx.fill();
+    }
 
     // Draw planets
     planets.forEach((planet, index) => {
@@ -90,7 +102,7 @@ export default function App() {
       const angle = planetAnglesRef.current[index];
       const px = cx + Math.cos(angle) * radius;
       const py = cy + Math.sin(angle) * radius;
-      const planetSize = planet.size * scale;
+      const planetSize = Math.max(1, planet.size * scale);
 
       // Planet shadow/glow
       if (hoveredPlanet === planet.name) {
@@ -101,29 +113,40 @@ export default function App() {
       }
 
       // Planet body
-      const planetGradient = ctx.createRadialGradient(
-        px - planetSize * 0.3, py - planetSize * 0.3, 0,
-        px, py, planetSize
-      );
-      planetGradient.addColorStop(0, lightenColor(planet.color, 40));
-      planetGradient.addColorStop(1, planet.color);
-      ctx.beginPath();
-      ctx.arc(px, py, planetSize, 0, Math.PI * 2);
-      ctx.fillStyle = planetGradient;
-      ctx.fill();
+      try {
+        const planetGradient = ctx.createRadialGradient(
+          px - planetSize * 0.3, py - planetSize * 0.3, 0,
+          px, py, planetSize
+        );
+        planetGradient.addColorStop(0, lightenColor(planet.color, 40));
+        planetGradient.addColorStop(1, planet.color);
+        ctx.beginPath();
+        ctx.arc(px, py, planetSize, 0, Math.PI * 2);
+        ctx.fillStyle = planetGradient;
+        ctx.fill();
+      } catch (e) {
+        // Fallback: draw planet as simple circle
+        ctx.beginPath();
+        ctx.arc(px, py, planetSize, 0, Math.PI * 2);
+        ctx.fillStyle = planet.color;
+        ctx.fill();
+      }
 
       // Saturn's rings
       if (planet.name === 'Saturn') {
+        const ringRx = Math.max(1, planetSize * 1.8);
+        const ringRy = Math.max(1, planetSize * 0.5);
         ctx.beginPath();
-        ctx.ellipse(px, py, planetSize * 1.8, planetSize * 0.5, Math.PI * 0.1, 0, Math.PI * 2);
+        ctx.ellipse(px, py, ringRx, ringRy, Math.PI * 0.1, 0, Math.PI * 2);
         ctx.strokeStyle = 'rgba(232, 213, 160, 0.6)';
-        ctx.lineWidth = 2 * scale;
+        ctx.lineWidth = Math.max(1, 2 * scale);
         ctx.stroke();
       }
 
       // Planet name label
       if (hoveredPlanet === planet.name || selectedPlanet?.name === planet.name) {
-        ctx.font = `${12 * scale}px sans-serif`;
+        const fontSize = Math.max(8, 12 * scale);
+        ctx.font = `${fontSize}px sans-serif`;
         ctx.fillStyle = 'white';
         ctx.textAlign = 'center';
         ctx.fillText(planet.nameRu, px, py - planetSize - 8);
@@ -161,10 +184,11 @@ export default function App() {
 
   const lightenColor = (color: string, percent: number): string => {
     const num = parseInt(color.replace('#', ''), 16);
+    if (isNaN(num)) return color;
     const amt = Math.round(2.55 * percent);
-    const R = Math.min(255, (num >> 16) + amt);
-    const G = Math.min(255, ((num >> 8) & 0x00FF) + amt);
-    const B = Math.min(255, (num & 0x0000FF) + amt);
+    const R = Math.max(0, Math.min(255, (num >> 16) + amt));
+    const G = Math.max(0, Math.min(255, ((num >> 8) & 0x00FF) + amt));
+    const B = Math.max(0, Math.min(255, (num & 0x0000FF) + amt));
     return `rgb(${R}, ${G}, ${B})`;
   };
 
